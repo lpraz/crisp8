@@ -1,17 +1,17 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c5333c0871f1b4ceaae40820fff0da6b17d57f15d0d74fb3b974a14ab441a915
+-- hash: 1853e9b50e9c5f87d6ecafa4086e6106b8cc0f31e9cf322c2b50fea44928c5fd
 
 name:           crisp8
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/crisp8#readme>
-homepage:       https://github.com/githubuser/crisp8#readme
-bug-reports:    https://github.com/githubuser/crisp8/issues
-author:         Author name here
+description:    Please see the README on GitHub at <https://github.com/lpraz/crisp8#readme>
+homepage:       https://github.com/lpraz/crisp8#readme
+bug-reports:    https://github.com/lpraz/crisp8/issues
+author:         Logan Praznik
 maintainer:     example@example.com
 copyright:      2020 Author name here
 license:        BSD3
@@ -23,7 +23,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/crisp8
+  location: https://github.com/lpraz/crisp8
 
 library
   exposed-modules:
@@ -34,6 +34,8 @@ library
       src
   build-depends:
       base >=4.7 && <5
+    , linear
+    , sdl2
   default-language: Haskell2010
 
 executable crisp8-exe
@@ -46,6 +48,8 @@ executable crisp8-exe
   build-depends:
       base >=4.7 && <5
     , crisp8
+    , linear
+    , sdl2
   default-language: Haskell2010
 
 test-suite crisp8-test
@@ -59,4 +63,6 @@ test-suite crisp8-test
   build-depends:
       base >=4.7 && <5
     , crisp8
+    , linear
+    , sdl2
   default-language: Haskell2010
