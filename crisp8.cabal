@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ea212c5703172c95a102aa9568326e899646d8446a6a00f0f7fb102bf97bf724
+-- hash: 770e30dc725648f661b2e7a328ab0a8ed1ea9a1bdffaa268ccba88935fdb45ab
 
 name:           crisp8
 version:        0.1.0.0
@@ -28,8 +28,6 @@ source-repository head
 library
   exposed-modules:
       Machine
-      ProgramCounter
-      Timer
   other-modules:
       Paths_crisp8
   hs-source-dirs:
