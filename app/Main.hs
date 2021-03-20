@@ -10,6 +10,7 @@ import Data.Int (Int32)
 import Data.Word (Word8)
 import qualified Data.Array.Unboxed as UA
 import Control.Concurrent
+import System.Environment (getArgs)
 
 import qualified Machine as M
 
@@ -19,7 +20,8 @@ main = do
     window <- createWindow "crisp8" defaultWindow
     windowSize window $= chip8DisplaySize ^* 8
     renderer <- createRenderer window (-1) defaultRenderer
-    rom <- B.readFile "roms/ibm.ch8"
+    args <- getArgs
+    rom <- B.readFile $ head args
     let machine = M.load rom M.makeMachine
     appLoop machine renderer
     destroyWindow window
