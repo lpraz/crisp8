@@ -47,8 +47,8 @@ makeScreen = UA.array ((0, 0), (displayWidth - 1, displayHeight - 1)) []
 makeVars :: UA.UArray Word8 Word8
 makeVars = UA.array (0, 15) []
 
-load :: B.ByteString -> Machine -> Machine
-load bytes machine = machine { ram = newRam }
+loadRom :: B.ByteString -> Machine -> Machine
+loadRom bytes machine = machine { ram = newRam }
     where
       byteList = B.unpack bytes
       assocs = zip [0x200..] byteList
@@ -75,30 +75,42 @@ incrementPc machine = machine { pc = pc machine + 2 }
 decode :: Word16 -> Either String Instruction
 decode word = case word .&. 0xF000 of
     0x0000 -> case word .&. 0xFFF of
-        0x0E0 -> Right $ Instruction clearScreen
-        0x0EE -> Right $ Instruction returnFromSub
+        0x0E0 -> inst clearScreen
+        0x0EE -> inst returnFromSub
         _ -> Left $ "Unsupported machine language routine " ++ showHex word ""
-    0x1000 -> Right $ Instruction $ jump (iNNN word)
-    0x2000 -> Right $ Instruction $ callSub (iNNN word)
-    0x3000 -> Right $ Instruction $ skipIfEqualTo (iNii word) (iiNN word)
-    0x4000 -> Right $ Instruction $ skipIfNotEqualTo (iNii word) (iiNN word)
-    0x5000 -> Right $ Instruction $ skipIfEqualToVar (iNii word) (iiNi word)
-    0x6000 -> Right $ Instruction $ setVar (iNii word) (iiNN word)
-    0x7000 -> Right $ Instruction $ addToVar (iNii word) (iiNN word)
+    0x1000 -> inst $ jump (iNNN word)
+    0x2000 -> inst $ callSub (iNNN word)
+    0x3000 -> inst $ skipIfEqualTo (iNii word) (iiNN word)
+    0x4000 -> inst $ skipIfNotEqualTo (iNii word) (iiNN word)
+    0x5000 -> inst $ skipIfEqualToVar (iNii word) (iiNi word)
+    0x6000 -> inst $ setVar (iNii word) (iiNN word)
+    0x7000 -> inst $ addToVar (iNii word) (iiNN word)
     0x8000 -> case word .&. 0xF of
-        0x0 -> Right $ Instruction $ setVarToVar (iNii word) (iiNi word)
-        0x1 -> Right $ Instruction $ orWithVars (iNii word) (iiNi word)
-        0x2 -> Right $ Instruction $ andWithVars (iNii word) (iiNi word)
-        0x3 -> Right $ Instruction $ xorWithVars (iNii word) (iiNi word)
-        0x4 -> Right $ Instruction $ addWithVars (iNii word) (iiNi word)
-        0x5 -> Right $ Instruction $ subtractFromVar (iNii word) (iiNi word)
-        0x6 -> Right $ Instruction $ shiftVarRight (iNii word) (iiNi word)
-        0x7 -> Right $ Instruction $ subtractToVar (iNii word) (iiNi word)
-        0xE -> Right $ Instruction $ shiftVarLeft (iNii word) (iiNi word)
-    0x9000 -> Right $ Instruction $ skipIfNotEqualToVar (iNii word) (iiNi word)
-    0xA000 -> Right $ Instruction $ setI (iNNN word)
-    0xD000 -> Right $ Instruction $ draw (iNii word) (iiNi word) (iiiN word)
-    _ -> Left $ "Invalid opcode " ++ showHex word ""
+        0x0 -> inst $ setVarToVar (iNii word) (iiNi word)
+        0x1 -> inst $ orWithVars (iNii word) (iiNi word)
+        0x2 -> inst $ andWithVars (iNii word) (iiNi word)
+        0x3 -> inst $ xorWithVars (iNii word) (iiNi word)
+        0x4 -> inst $ addWithVars (iNii word) (iiNi word)
+        0x5 -> inst $ subtractFromVar (iNii word) (iiNi word)
+        0x6 -> inst $ shiftVarRight (iNii word) (iiNi word)
+        0x7 -> inst $ subtractToVar (iNii word) (iiNi word)
+        0xE -> inst $ shiftVarLeft (iNii word) (iiNi word)
+        _ -> invalid
+    0x9000 -> inst $ skipIfNotEqualToVar (iNii word) (iiNi word)
+    0xA000 -> inst $ setI (iNNN word)
+    0xD000 -> inst $ draw (iNii word) (iiNi word) (iiiN word)
+    0xF000 -> case word .&. 0xFF of
+        --0x07 -> inst $ readDelayTimer (iNii word)
+        --0x15 -> inst $ setDelayTimer (iNii word)
+        --0x18 -> inst $ setSoundTimer (iNii word)
+        0x33 -> inst $ convertBcd (iNii word)
+        0x55 -> inst $ store (iNii word)
+        0x65 -> inst $ load (iNii word)
+        _ -> invalid
+    _ -> invalid
+    where
+      inst x = Right $ Instruction x
+      invalid = Left $ "Invalid opcode " ++ showHex word ""
 
 clearScreen :: Machine -> Machine
 clearScreen machine = machine { screen = makeScreen }
@@ -266,6 +278,61 @@ blit screen sprite x y = accum
     (/=)
     screen
     [ ((ax + x, ay + y), s) | ((ax, ay), s) <- assocs sprite ]
+
+
+--readDelayTimer :: Word8 -> Machine -> Machine
+--readDelayTimer xVar machine = machine { vars = newVars }
+--    where
+--      newVars = vars machine // [(xVar, delayTimer machine)]
+
+--setDelayTimer :: Word8 -> Machine -> Machine
+--setDelayTimer xVar machine = machine { delayTimer = newTimer }
+--    where
+--      newTimer = vars machine ! xVar
+
+--setSoundTimer :: Word8 -> Machine -> Machine
+--setSoundTimer xVar machine = machine { soundTimer = newTimer }
+--    where
+--      newTimer = vars machine ! xVar
+
+convertBcd :: Word8 -> Machine -> Machine
+convertBcd xVar machine = machine { ram = newRam }
+    where
+      x = vars machine ! xVar
+      hundreds = x `div` 100
+      tens = x `div` 10 `mod` 10
+      ones = x `mod` 10
+      newRam = ram machine //
+        [ (i machine, hundreds)
+        , (i machine + 1, tens)
+        , (i machine + 2, ones)
+        ]
+
+-- Old (COSMAC VIP) version. Sets i at end (SUPER-CHIP doesn't)
+-- TODO: make SUPER-CHIP compatible version (as part of SUPER-CHIP compat)
+store :: Word8 -> Machine -> Machine
+store xVar machine = machine { ram = newRam, i = newI }
+    where
+      vars16 = ixmap (0, 15) fromIntegral (vars machine)
+        :: UA.UArray Word16 Word8
+      contents = ixmap 
+        (i machine, i machine + fromIntegral xVar)
+        (\a -> a - i machine)
+        vars16
+      newRam = ram machine // assocs contents
+      newI = i machine + fromIntegral xVar
+
+-- Old (COSMAC VIP) version. Sets i at end (SUPER-CHIP doesn't)
+-- TODO: make SUPER-CHIP compatible version (as part of SUPER-CHIP compat)
+load :: Word8 -> Machine -> Machine
+load xVar machine = machine { vars = newVars, i = newI }
+    where
+      contents = ixmap
+        (0, xVar) 
+        (\a -> fromIntegral (fromIntegral a + i machine))
+        (ram machine)
+      newVars = vars machine // assocs contents
+      newI = i machine + fromIntegral xVar
 
 iNNN :: Word16 -> Word16
 iNNN = (0xFFF .&.)
