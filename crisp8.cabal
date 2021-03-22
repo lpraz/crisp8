@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 770e30dc725648f661b2e7a328ab0a8ed1ea9a1bdffaa268ccba88935fdb45ab
+-- hash: e00a3bc21213ce88d57e2a42055bee7dacf93408c836837afa576d20644ad24a
 
 name:           crisp8
 version:        0.1.0.0
@@ -37,6 +37,7 @@ library
     , base >=4.7 && <5
     , bytestring
     , linear
+    , random
     , sdl2
   default-language: Haskell2010
 
@@ -53,6 +54,7 @@ executable crisp8-exe
     , bytestring
     , crisp8
     , linear
+    , random
     , sdl2
   default-language: Haskell2010
 
@@ -70,5 +72,6 @@ test-suite crisp8-test
     , bytestring
     , crisp8
     , linear
+    , random
     , sdl2
   default-language: Haskell2010

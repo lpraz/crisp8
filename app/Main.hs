@@ -22,7 +22,8 @@ main = do
     renderer <- createRenderer window (-1) defaultRenderer
     args <- getArgs
     rom <- B.readFile $ head args
-    let machine = M.loadRom rom M.makeMachine
+    machine <- M.makeMachine
+    machine <- return $ M.loadRom rom machine
     appLoop machine renderer
     destroyWindow window
 

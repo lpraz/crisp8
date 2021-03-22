@@ -5,9 +5,7 @@ import Data.Word (Word8, Word16)
 import Data.Bits (shift, (.&.), (.|.), xor, testBit)
 import qualified Data.ByteString as B
 import Numeric (showHex)
-
--- TODO: remove this
-import qualified Debug.Trace as DB
+import System.Random (StdGen, newStdGen, random)
 
 -- TODO: compat with SUPER-CHIP, XO-CHIP (use GADT?)
 data Machine = Machine
@@ -19,6 +17,7 @@ data Machine = Machine
     , delayTimer :: Word8
     , soundTimer :: Word8
     , vars :: UA.UArray Word8 Word8 -- variable registers
+    , rng :: StdGen
     }
 
 displayWidth = 64
@@ -26,17 +25,20 @@ displayHeight = 32
 
 newtype Instruction = Instruction { execute :: Machine -> Machine }
 
-makeMachine :: Machine
-makeMachine = Machine
-    { ram = makeRam
-    , screen = makeScreen
-    , pc = 0x200
-    , i = 0
-    , stack = []
-    , delayTimer = 0
-    , soundTimer = 0
-    , vars = makeVars
-    }
+makeMachine :: IO Machine
+makeMachine = do
+    rng <- newStdGen
+    return Machine
+      { ram = makeRam
+      , screen = makeScreen
+      , pc = 0x200
+      , i = 0
+      , stack = []
+      , delayTimer = 0
+      , soundTimer = 0
+      , vars = makeVars
+      , rng = rng
+      }
 
 makeRam :: UA.UArray Word16 Word8
 makeRam = UA.array (0, 4095) []
@@ -98,11 +100,14 @@ decode word = case word .&. 0xF000 of
         _ -> invalid
     0x9000 -> inst $ skipIfNotEqualToVar (iNii word) (iiNi word)
     0xA000 -> inst $ setI (iNNN word)
+    0xB000 -> inst $ jumpWithOffset (iNNN word)
+    0xC000 -> inst $ setVarToMaskedRandom (iNii word) (iiNN word)
     0xD000 -> inst $ draw (iNii word) (iiNi word) (iiiN word)
     0xF000 -> case word .&. 0xFF of
         --0x07 -> inst $ readDelayTimer (iNii word)
         --0x15 -> inst $ setDelayTimer (iNii word)
         --0x18 -> inst $ setSoundTimer (iNii word)
+        0x1E -> inst $ addToI (iNii word)
         0x33 -> inst $ convertBcd (iNii word)
         0x55 -> inst $ store (iNii word)
         0x65 -> inst $ load (iNii word)
@@ -190,7 +195,7 @@ addWithVars xVar yVar machine = machine { vars = newVars }
       y = vars machine ! yVar
       newVars = vars machine //
         [ (xVar, x + y)
-        , (0xF, if y > maxBound - x then 1 else 0) -- did we overflow?
+        , (0xF, if willOverflowOnAdd x y maxBound then 1 else 0)
         ]
 
 subtractFromVar :: Word8 -> Word8 -> Machine -> Machine
@@ -200,7 +205,7 @@ subtractFromVar xVar yVar machine = machine { vars = newVars }
       y = vars machine ! yVar
       newVars = vars machine //
         [ (xVar, x - y)
-        , (0xF, if x >= y then 1 else 0) -- did we underflow?
+        , (0xF, if willUnderflowOnSubtract x y then 0 else 1)
         ]
 
 -- Old (COSMAC VIP) version.
@@ -221,7 +226,7 @@ subtractToVar xVar yVar machine = machine { vars = newVars }
       y = vars machine ! yVar
       newVars = vars machine //
         [ (xVar, y - x)
-        , (0xF, if y >= x then 1 else 0) -- did we underflow?
+        , (0xF, if willUnderflowOnSubtract y x then 0 else 1)
         ]
 
 -- Old (COSMAC VIP) version.
@@ -244,6 +249,23 @@ skipIfNotEqualToVar xVar yVar machine = machine { pc = newPc }
 
 setI :: Word16 -> Machine -> Machine
 setI newI machine = machine { i = newI }
+
+-- Old (COSMAC VIP) version. Always uses V0 as offset
+-- TODO: make SUPER-CHIP compatible version (as part of SUPER-CHIP compat)
+jumpWithOffset :: Word16 -> Machine -> Machine
+jumpWithOffset newPc machine = machine { pc = offsetPc }
+    where
+      offset = vars machine ! 0
+      offsetPc = newPc + fromIntegral offset
+
+setVarToMaskedRandom :: Word8 -> Word8 -> Machine -> Machine
+setVarToMaskedRandom xVar mask machine = machine
+    { vars = newVars
+    , rng = newRng 
+    }
+    where
+      (randomWord, newRng) = (random . rng) machine
+      newVars = vars machine // [(xVar, randomWord)]
 
 draw :: Word8 -> Word8 -> Word8 -> Machine -> Machine
 draw xVar yVar height machine = machine { screen = newScreen }
@@ -279,7 +301,6 @@ blit screen sprite x y = accum
     screen
     [ ((ax + x, ay + y), s) | ((ax, ay), s) <- assocs sprite ]
 
-
 --readDelayTimer :: Word8 -> Machine -> Machine
 --readDelayTimer xVar machine = machine { vars = newVars }
 --    where
@@ -294,6 +315,15 @@ blit screen sprite x y = accum
 --setSoundTimer xVar machine = machine { soundTimer = newTimer }
 --    where
 --      newTimer = vars machine ! xVar
+
+-- Sets VF based on overflow, in line with Amiga
+addToI :: Word8 -> Machine -> Machine
+addToI xVar machine = machine { i = newI, vars = newVars }
+    where
+      x = vars machine ! xVar
+      newI = i machine + fromIntegral x
+      newVars = vars machine //
+        [(0xF, if willOverflowOnAdd (fromIntegral x) (i machine) 0xFFF then 1 else 0)]
 
 convertBcd :: Word8 -> Machine -> Machine
 convertBcd xVar machine = machine { ram = newRam }
@@ -354,3 +384,9 @@ xxyy x y = shift x16 8 + y16
     where
       x16 = fromIntegral x :: Word16
       y16 = fromIntegral y :: Word16
+
+willOverflowOnAdd :: (Integral a) => a -> a -> a -> Bool
+willOverflowOnAdd x y upperBound = y > upperBound - x
+
+willUnderflowOnSubtract :: (Integral a) => a -> a -> Bool
+willUnderflowOnSubtract x y = x <= y
