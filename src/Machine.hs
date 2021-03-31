@@ -7,6 +7,8 @@ import qualified Data.ByteString as B
 import Numeric (showHex)
 import System.Random (StdGen, newStdGen, random)
 
+import Font (defaultFont)
+
 -- TODO: compat with SUPER-CHIP, XO-CHIP (use GADT?)
 data Machine = Machine
     { ram :: UA.UArray Word16 Word8 -- up to 4kb for original CHIP-8
@@ -22,6 +24,7 @@ data Machine = Machine
 
 displayWidth = 64
 displayHeight = 32
+fontStartAddr = 0x50
 
 newtype Instruction = Instruction { execute :: Machine -> Machine }
 
@@ -41,7 +44,10 @@ makeMachine = do
       }
 
 makeRam :: UA.UArray Word16 Word8
-makeRam = UA.array (0, 4095) []
+makeRam = blankRam // assocs font
+    where
+      blankRam = UA.array (0, 0xFFF) []
+      font = ixmap (0, 0xFFF) (+fontStartAddr) defaultFont
 
 makeScreen :: UA.UArray (Word8, Word8) Bool
 makeScreen = UA.array ((0, 0), (displayWidth - 1, displayHeight - 1)) []
@@ -108,6 +114,7 @@ decode word = case word .&. 0xF000 of
         --0x15 -> inst $ setDelayTimer (iNii word)
         --0x18 -> inst $ setSoundTimer (iNii word)
         0x1E -> inst $ addToI (iNii word)
+        0x29 -> inst $ setIToFontAddr (iNii word)
         0x33 -> inst $ convertBcd (iNii word)
         0x55 -> inst $ store (iNii word)
         0x65 -> inst $ load (iNii word)
@@ -323,7 +330,17 @@ addToI xVar machine = machine { i = newI, vars = newVars }
       x = vars machine ! xVar
       newI = i machine + fromIntegral x
       newVars = vars machine //
-        [(0xF, if willOverflowOnAdd (fromIntegral x) (i machine) 0xFFF then 1 else 0)]
+        [(0xF, 
+          if willOverflowOnAdd (fromIntegral x) (i machine) 0xFFF 
+            then 1 
+            else 0
+        )]
+
+setIToFontAddr :: Word8 -> Machine -> Machine
+setIToFontAddr xVar machine = machine { i = newI }
+    where
+      x = vars machine ! xVar
+      newI = fontStartAddr + fromIntegral ((x .&. 0xF) * 5)
 
 convertBcd :: Word8 -> Machine -> Machine
 convertBcd xVar machine = machine { ram = newRam }
