@@ -8,6 +8,7 @@ import Numeric (showHex)
 import System.Random (StdGen, newStdGen, random)
 
 import Font (defaultFont)
+import qualified Keypad as KP
 
 -- TODO: compat with SUPER-CHIP, XO-CHIP (use GADT?)
 data Machine = Machine
@@ -19,12 +20,21 @@ data Machine = Machine
     , delayTimer :: Word8
     , soundTimer :: Word8
     , vars :: UA.UArray Word8 Word8 -- variable registers
+    , runState :: RunState
     , rng :: StdGen
+    , clockSpeed :: Int
+    , keypad :: KP.Keypad
     }
 
 displayWidth = 64
 displayHeight = 32
 fontStartAddr = 0x50
+
+data RunState
+  = Running
+  | Paused
+  | WaitForKeyUp Word8 -- FX0A: move to Running on key up
+-- More on FX0A: https://retrocomputing.stackexchange.com/questions/358/how-are-held-down-keys-handled-in-chip-8
 
 newtype Instruction = Instruction { execute :: Machine -> Machine }
 
@@ -40,7 +50,10 @@ makeMachine = do
       , delayTimer = 0
       , soundTimer = 0
       , vars = makeVars
+      , runState = Running
       , rng = rng
+      , clockSpeed = 700
+      , keypad = KP.makeKeypad
       }
 
 makeRam :: UA.UArray Word16 Word8
@@ -109,6 +122,9 @@ decode word = case word .&. 0xF000 of
     0xB000 -> inst $ jumpWithOffset (iNNN word)
     0xC000 -> inst $ setVarToMaskedRandom (iNii word) (iiNN word)
     0xD000 -> inst $ draw (iNii word) (iiNi word) (iiiN word)
+    0xE000 -> case word .&. 0xFF of
+        0x9E -> inst $ skipIfKeyDown (iNii word)
+        0xA1 -> inst $ skipIfKeyUp (iNii word)
     0xF000 -> case word .&. 0xFF of
         --0x07 -> inst $ readDelayTimer (iNii word)
         --0x15 -> inst $ setDelayTimer (iNii word)
@@ -307,6 +323,18 @@ blit screen sprite x y = accum
     (/=)
     screen
     [ ((ax + x, ay + y), s) | ((ax, ay), s) <- assocs sprite ]
+  
+skipIfKeyDown :: Word8 -> Machine -> Machine
+skipIfKeyDown key machine = machine { pc = newPc }
+    where
+      isKeyDown = KP.unKp (keypad machine) ! key == KP.Down
+      newPc = if isKeyDown then pc machine + 2 else pc machine
+
+skipIfKeyUp :: Word8 -> Machine -> Machine
+skipIfKeyUp key machine = machine { pc = newPc }
+    where
+      isKeyUp = KP.unKp (keypad machine) ! key == KP.Up
+      newPc = if isKeyUp then pc machine + 2 else pc machine
 
 --readDelayTimer :: Word8 -> Machine -> Machine
 --readDelayTimer xVar machine = machine { vars = newVars }
