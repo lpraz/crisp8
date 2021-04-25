@@ -1,4 +1,4 @@
-module Machine where
+module Crisp8.Machine where
 
 import Data.Array.Unboxed as UA
 import Data.Word (Word8, Word16)
@@ -7,8 +7,8 @@ import qualified Data.ByteString as B
 import Numeric (showHex)
 import System.Random (StdGen, newStdGen, random)
 
-import Font (defaultFont)
-import qualified Keypad as KP
+import Crisp8.Machine.Font (defaultFont)
+import qualified Crisp8.Machine.Keypad as KP
 
 -- TODO: compat with SUPER-CHIP, XO-CHIP (use GADT?)
 data Machine = Machine

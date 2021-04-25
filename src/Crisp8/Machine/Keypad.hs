@@ -1,4 +1,4 @@
-module Keypad where
+module Crisp8.Machine.Keypad where
 
 import Data.Word (Word8)
 import Data.Array (Array, listArray)

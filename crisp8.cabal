@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d4e8d19742334db3b5bb728ef6627a2e477baa6fa2b830d60bde49e060b2f3d0
+-- hash: 69441c85093cf7bed8bb2f487a0db3f6bfeecdd4db90a610b16fd383662774be
 
 name:           crisp8
 version:        0.1.0.0
@@ -27,9 +27,11 @@ source-repository head
 
 library
   exposed-modules:
-      Font
-      Keypad
-      Machine
+      Crisp8.Machine
+      Crisp8.Machine.Font
+      Crisp8.Machine.Keypad
+      Crisp8.Ui.Graphics
+      Crisp8.Ui.Input
   other-modules:
       Paths_crisp8
   hs-source-dirs:

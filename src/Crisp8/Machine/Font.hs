@@ -1,4 +1,4 @@
-module Font where
+module Crisp8.Machine.Font where
 
 import Data.Word (Word8, Word16)
 import Data.Array.Unboxed as UA
