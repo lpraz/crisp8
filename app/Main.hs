@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NumericUnderscores #-}
+
 module Main where
 
 import SDL
@@ -17,37 +17,40 @@ import qualified Crisp8.Ui.Graphics as G
 
 main :: IO ()
 main = do
-    initializeAll
-    let windowConfig = defaultWindow 
-          { windowInitialSize = G.chip8DisplaySize ^* 8 
-          }
-    window <- createWindow "crisp8" windowConfig
+    window <- G.makeWindow
     renderer <- createRenderer window (-1) defaultRenderer
     rom <- fmap head getArgs >>= B.readFile
     machine <- fmap (M.loadRom rom) M.makeMachine
-    appLoop machine renderer
+    mMachine <- newMVar machine
+    forkIO $ displayLoop renderer mMachine
+    forkIO $ timerLoop mMachine
+    machineLoop mMachine
     destroyWindow window
 
 -- Multithreadedness:
 -- forkIO $ someFunc to split into machine, display and timer threads
+-- Machine: run every 1s/clockSpeed, cycles machine and handles input
+-- Display: 60Hz (configurable?), updates window based on machine display
+-- Timer: 60Hz, decrements delay/sound timers
 
-appLoop :: M.Machine -> Renderer -> IO ()
-appLoop machine renderer = do
-    threadDelay $ 1_000_000 `div` M.clockSpeed machine
-    either print keepLooping (M.cycle machine)
-    where
-      keepLooping cycledMachine = do
-        G.updateDisplay cycledMachine renderer
-        newKeypad <- I.updateKeys $ M.keypad cycledMachine
-        let kpUpdatedMachine = cycledMachine { M.keypad = newKeypad }
-        exit <- userAskedToExit
-        unless exit $ appLoop kpUpdatedMachine renderer
+machineLoop :: MVar M.Machine -> IO ()
+machineLoop mMachine = do
+    modifyMVar_ mMachine (\machine -> do
+      threadDelay $ 1_000_000 `div` M.clockSpeed machine
+      newKeypad <- I.updateKeys $ M.keypad machine
+      let kpUpdatedMachine = machine { M.keypad = newKeypad }
+      either (\e -> print e >> pure machine) pure $ M.cycle kpUpdatedMachine)
+    exit <- I.userAskedToExit
+    unless exit $ machineLoop mMachine
 
-userAskedToExit :: IO Bool
-userAskedToExit = do
-    events <- pollEvents
-    let eventIsWindowClose event =
-          case eventPayload event of
-            WindowClosedEvent windowClosedEvent -> True
-            _ -> False
-    return $ any eventIsWindowClose events
+displayLoop :: Renderer -> MVar M.Machine -> IO ()
+displayLoop renderer mMachine = do
+    withMVar mMachine $ G.updateDisplay renderer
+    threadDelay $ 1_000_000 `div` 60
+    displayLoop renderer mMachine
+
+timerLoop :: MVar M.Machine -> IO ()
+timerLoop mMachine = do
+    modifyMVar_ mMachine (pure . M.decrementTimers)
+    threadDelay $ 1_000_000 `div` 60
+    timerLoop mMachine

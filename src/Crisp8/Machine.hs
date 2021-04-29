@@ -140,13 +140,20 @@ decode word = case word .&. 0xF000 of
       inst x = Right $ Instruction x
       invalid = Left $ "Invalid opcode " ++ showHex word ""
 
+decrementTimers :: Machine -> Machine
+decrementTimers machine = machine 
+    { delayTimer = delayTimer machine - 1
+    , soundTimer = soundTimer machine - 1
+    }
+
 clearScreen :: Machine -> Machine
 clearScreen machine = machine { screen = makeScreen }
 
 returnFromSub :: Machine -> Machine
 returnFromSub machine = machine 
     { pc = (head . stack) machine
-    , stack = (tail . stack) machine }
+    , stack = (tail . stack) machine
+    }
 
 jump :: Word16 -> Machine -> Machine
 jump newPc machine = machine { pc = newPc }

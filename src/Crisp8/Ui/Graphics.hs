@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Crisp8.Ui.Graphics where
 
 import SDL
@@ -8,8 +10,16 @@ import Data.Word (Word8)
 
 import qualified Crisp8.Machine as M
 
-updateDisplay :: M.Machine -> Renderer -> IO ()
-updateDisplay machine renderer = do
+makeWindow :: IO Window
+makeWindow = do
+    initializeAll
+    let windowConfig = defaultWindow 
+          { windowInitialSize = chip8DisplaySize ^* 8 
+          }
+    createWindow "crisp8" windowConfig
+
+updateDisplay :: Renderer -> M.Machine -> IO ()
+updateDisplay renderer machine = do
     rendererDrawColor renderer $= offColor
     clear renderer
     texture <- getTexture (M.screen machine) renderer

@@ -50,3 +50,12 @@ getChip8Key _ = Nothing
 getChip8KeyState :: InputMotion -> KP.KeyState
 getChip8KeyState Pressed = KP.Down
 getChip8KeyState Released = KP.Up
+
+userAskedToExit :: IO Bool
+userAskedToExit = do
+    events <- pollEvents
+    let eventIsWindowClose event =
+          case eventPayload event of
+            WindowClosedEvent windowClosedEvent -> True
+            _ -> False
+    return $ any eventIsWindowClose events
