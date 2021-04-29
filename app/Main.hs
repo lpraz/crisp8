@@ -27,12 +27,7 @@ main = do
     machineLoop mMachine
     destroyWindow window
 
--- Multithreadedness:
--- forkIO $ someFunc to split into machine, display and timer threads
 -- Machine: run every 1s/clockSpeed, cycles machine and handles input
--- Display: 60Hz (configurable?), updates window based on machine display
--- Timer: 60Hz, decrements delay/sound timers
-
 machineLoop :: MVar M.Machine -> IO ()
 machineLoop mMachine = do
     modifyMVar_ mMachine (\machine -> do
@@ -43,12 +38,14 @@ machineLoop mMachine = do
     exit <- I.userAskedToExit
     unless exit $ machineLoop mMachine
 
+-- Display: 60Hz (configurable?), updates window based on machine display
 displayLoop :: Renderer -> MVar M.Machine -> IO ()
 displayLoop renderer mMachine = do
     withMVar mMachine $ G.updateDisplay renderer
     threadDelay $ 1_000_000 `div` 60
     displayLoop renderer mMachine
 
+-- Timer: 60Hz, decrements delay/sound timers
 timerLoop :: MVar M.Machine -> IO ()
 timerLoop mMachine = do
     modifyMVar_ mMachine (pure . M.decrementTimers)

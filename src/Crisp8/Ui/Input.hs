@@ -1,7 +1,7 @@
 module Crisp8.Ui.Input where
 
 import SDL
-import qualified Data.Array.Unboxed as UA
+import Data.Array.Unboxed
 import Data.Maybe (mapMaybe)
 import Data.Word (Word8)
 
@@ -15,16 +15,14 @@ updateKeys keypad = do
             KeyboardEvent kbEvent -> Just kbEvent
             _ -> Nothing
     let kbEvents = mapMaybe kbEventMap events
-    let oldKpArray = KP.unKp keypad
-    let newKpAssocs = mapMaybe getChip8KeyEvent kbEvents
-    let newKpArray = oldKpArray UA.// newKpAssocs
-    return $ KP.Keypad newKpArray
+    let kpEvents = mapMaybe getChip8KeyEvent kbEvents
+    pure $ KP.updateKeypad kpEvents keypad
 
-getChip8KeyEvent :: KeyboardEventData -> Maybe (Word8, KP.KeyState)
+getChip8KeyEvent :: KeyboardEventData -> Maybe KP.KeyEvent
 getChip8KeyEvent kbEvent = do
   chip8Key <- getChip8Key $ keysymScancode $ keyboardEventKeysym kbEvent
   let chip8KeyState = getChip8KeyState $ keyboardEventKeyMotion kbEvent
-  return (chip8Key, chip8KeyState)
+  pure $ KP.KeyEvent chip8Key chip8KeyState
 
 -- Follows COSMAC VIP layout.
 -- TODO: allow config for this, with presets that follow other systems?

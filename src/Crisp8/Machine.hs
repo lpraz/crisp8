@@ -1,6 +1,6 @@
 module Crisp8.Machine where
 
-import Data.Array.Unboxed as UA
+import Data.Array.Unboxed
 import Data.Word (Word8, Word16)
 import Data.Bits (shift, (.&.), (.|.), xor, testBit)
 import qualified Data.ByteString as B
@@ -12,14 +12,14 @@ import qualified Crisp8.Machine.Keypad as KP
 
 -- TODO: compat with SUPER-CHIP, XO-CHIP (use GADT?)
 data Machine = Machine
-    { ram :: UA.UArray Word16 Word8 -- up to 4kb for original CHIP-8
+    { ram :: UArray Word16 Word8 -- up to 4kb for original CHIP-8
     , screen :: UArray (Word8, Word8) Bool -- 64x32x1bpp for original CHIP-8
     , pc :: Word16 -- program counter
     , i :: Word16 -- index register
     , stack :: [Word16] -- should this be in CHIP-8 RAM?
     , delayTimer :: Word8
     , soundTimer :: Word8
-    , vars :: UA.UArray Word8 Word8 -- variable registers
+    , vars :: UArray Word8 Word8 -- variable registers
     , runState :: RunState
     , rng :: StdGen
     , clockSpeed :: Int
@@ -56,17 +56,17 @@ makeMachine = do
       , keypad = KP.makeKeypad
       }
 
-makeRam :: UA.UArray Word16 Word8
+makeRam :: UArray Word16 Word8
 makeRam = blankRam // assocs font
     where
-      blankRam = UA.array (0, 0xFFF) []
+      blankRam = array (0, 0xFFF) []
       font = ixmap (0, 0xFFF) (+fontStartAddr) defaultFont
 
-makeScreen :: UA.UArray (Word8, Word8) Bool
-makeScreen = UA.array ((0, 0), (displayWidth - 1, displayHeight - 1)) []
+makeScreen :: UArray (Word8, Word8) Bool
+makeScreen = array ((0, 0), (displayWidth - 1, displayHeight - 1)) []
 
-makeVars :: UA.UArray Word8 Word8
-makeVars = UA.array (0, 15) []
+makeVars :: UArray Word8 Word8
+makeVars = array (0, 15) []
 
 loadRom :: B.ByteString -> Machine -> Machine
 loadRom bytes machine = machine { ram = newRam }
@@ -76,11 +76,13 @@ loadRom bytes machine = machine { ram = newRam }
       newRam = ram machine // assocs
 
 cycle :: Machine -> Either String Machine
-cycle machine = do
-    let opcode = fetch machine
-    let newMachine = incrementPc machine
-    instruction <- decode opcode
-    pure $ execute instruction newMachine
+cycle machine = case runState machine of
+    WaitForKeyUp xVar -> pure $ getKey xVar machine
+    _ -> do
+      let opcode = fetch machine
+      let newMachine = incrementPc machine
+      instruction <- decode opcode
+      pure $ execute instruction newMachine
 
 fetch :: Machine -> Word16
 fetch machine = xxyy byte1 byte2
@@ -126,9 +128,10 @@ decode word = case word .&. 0xF000 of
         0x9E -> inst $ skipIfKeyDown (iNii word)
         0xA1 -> inst $ skipIfKeyUp (iNii word)
     0xF000 -> case word .&. 0xFF of
-        --0x07 -> inst $ readDelayTimer (iNii word)
-        --0x15 -> inst $ setDelayTimer (iNii word)
-        --0x18 -> inst $ setSoundTimer (iNii word)
+        0x07 -> inst $ readDelayTimer (iNii word)
+        --0x0A -> inst $ waitForKey (iNii word)
+        0x15 -> inst $ setDelayTimer (iNii word)
+        0x18 -> inst $ setSoundTimer (iNii word)
         0x1E -> inst $ addToI (iNii word)
         0x29 -> inst $ setIToFontAddr (iNii word)
         0x33 -> inst $ convertBcd (iNii word)
@@ -306,26 +309,26 @@ draw xVar yVar height machine = machine { screen = newScreen }
       newScreen = blit (screen machine) sprite x y
 
 readSprite 
-    :: UA.UArray Word16 Word8 
+    :: UArray Word16 Word8 
     -> Word16 
     -> Word8 
-    -> UA.UArray (Word8, Word8) Bool
+    -> UArray (Word8, Word8) Bool
 readSprite ram i height = bits
     where
       bytes16 = ixmap (0, fromIntegral (height - 1)) (+i) ram
       bytes = ixmap (0, height - 1) fromIntegral bytes16
-        :: UA.UArray Word8 Word8
+        :: UArray Word8 Word8
       -- Each byte is an 8px-wide row, so our sprite should be 8*height
       bitAssocs = [ ((x, i), b .&. (2^(7 - x)) /= 0)
                     | (i, b) <- assocs bytes, x <- [0..7] ]
       bits = array ((0, 0), (7, height - 1)) bitAssocs
 
 blit
-    :: UA.UArray (Word8, Word8) Bool
-    -> UA.UArray (Word8, Word8) Bool
+    :: UArray (Word8, Word8) Bool
+    -> UArray (Word8, Word8) Bool
     -> Word8
     -> Word8
-    -> UA.UArray (Word8, Word8) Bool
+    -> UArray (Word8, Word8) Bool
 blit screen sprite x y = accum
     (/=)
     screen
@@ -334,29 +337,42 @@ blit screen sprite x y = accum
 skipIfKeyDown :: Word8 -> Machine -> Machine
 skipIfKeyDown key machine = machine { pc = newPc }
     where
-      isKeyDown = KP.unKp (keypad machine) ! key == KP.Down
+      isKeyDown = KP.keys (keypad machine) ! key == KP.Down
       newPc = if isKeyDown then pc machine + 2 else pc machine
 
 skipIfKeyUp :: Word8 -> Machine -> Machine
 skipIfKeyUp key machine = machine { pc = newPc }
     where
-      isKeyUp = KP.unKp (keypad machine) ! key == KP.Up
+      isKeyUp = KP.keys (keypad machine) ! key == KP.Up
       newPc = if isKeyUp then pc machine + 2 else pc machine
 
---readDelayTimer :: Word8 -> Machine -> Machine
---readDelayTimer xVar machine = machine { vars = newVars }
---    where
---      newVars = vars machine // [(xVar, delayTimer machine)]
+readDelayTimer :: Word8 -> Machine -> Machine
+readDelayTimer xVar machine = machine { vars = newVars }
+    where
+      newVars = vars machine // [(xVar, delayTimer machine)]
 
---setDelayTimer :: Word8 -> Machine -> Machine
---setDelayTimer xVar machine = machine { delayTimer = newTimer }
---    where
---      newTimer = vars machine ! xVar
+waitForKey :: Word8 -> Machine -> Machine
+waitForKey xVar machine = machine { runState = WaitForKeyUp xVar }
 
---setSoundTimer :: Word8 -> Machine -> Machine
---setSoundTimer xVar machine = machine { soundTimer = newTimer }
---    where
---      newTimer = vars machine ! xVar
+getKey :: Word8 -> Machine -> Machine
+getKey xVar machine =
+    if (not . null) keysUp
+      then machine { vars = newVars, runState = Running }
+      else machine
+    where
+      isKeyUpEvent = (KP.Up ==) . KP.state
+      keysUp = filter isKeyUpEvent $ (KP.events . keypad) machine
+      newVars = vars machine // [(xVar, (KP.key . head) keysUp)]
+
+setDelayTimer :: Word8 -> Machine -> Machine
+setDelayTimer xVar machine = machine { delayTimer = newTimer }
+    where
+      newTimer = vars machine ! xVar
+
+setSoundTimer :: Word8 -> Machine -> Machine
+setSoundTimer xVar machine = machine { soundTimer = newTimer }
+    where
+      newTimer = vars machine ! xVar
 
 -- Sets VF based on overflow, in line with Amiga
 addToI :: Word8 -> Machine -> Machine
@@ -396,7 +412,7 @@ store :: Word8 -> Machine -> Machine
 store xVar machine = machine { ram = newRam, i = newI }
     where
       vars16 = ixmap (0, 15) fromIntegral (vars machine)
-        :: UA.UArray Word16 Word8
+        :: UArray Word16 Word8
       contents = ixmap 
         (i machine, i machine + fromIntegral xVar)
         (\a -> a - i machine)
