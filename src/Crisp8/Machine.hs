@@ -78,11 +78,10 @@ loadRom bytes machine = machine { ram = newRam }
 cycle :: Machine -> Either String Machine
 cycle machine = case runState machine of
     WaitForKeyUp xVar -> pure $ getKey xVar machine
-    _ -> do
-      let opcode = fetch machine
-      let newMachine = incrementPc machine
-      instruction <- decode opcode
-      pure $ execute instruction newMachine
+    Paused -> pure machine
+    Running -> do
+      instruction <- (decode . fetch) machine
+      pure $ (execute instruction . incrementPc) machine
 
 fetch :: Machine -> Word16
 fetch machine = xxyy byte1 byte2
@@ -127,9 +126,10 @@ decode word = case word .&. 0xF000 of
     0xE000 -> case word .&. 0xFF of
         0x9E -> inst $ skipIfKeyDown (iNii word)
         0xA1 -> inst $ skipIfKeyUp (iNii word)
+        _ -> invalid
     0xF000 -> case word .&. 0xFF of
         0x07 -> inst $ readDelayTimer (iNii word)
-        --0x0A -> inst $ waitForKey (iNii word)
+        0x0A -> inst $ waitForKey (iNii word)
         0x15 -> inst $ setDelayTimer (iNii word)
         0x18 -> inst $ setSoundTimer (iNii word)
         0x1E -> inst $ addToI (iNii word)
@@ -145,9 +145,12 @@ decode word = case word .&. 0xF000 of
 
 decrementTimers :: Machine -> Machine
 decrementTimers machine = machine 
-    { delayTimer = delayTimer machine - 1
-    , soundTimer = soundTimer machine - 1
+    { delayTimer = if oldDelayTimer == 0 then 0 else oldDelayTimer - 1
+    , soundTimer = if oldSoundTimer == 0 then 0 else oldSoundTimer - 1
     }
+    where
+      oldDelayTimer = delayTimer machine
+      oldSoundTimer = soundTimer machine
 
 clearScreen :: Machine -> Machine
 clearScreen machine = machine { screen = makeScreen }
@@ -168,23 +171,22 @@ callSub newPc machine = machine
     }
 
 skipIfEqualTo :: Word8 -> Word8 -> Machine -> Machine
-skipIfEqualTo xVar value machine = machine { pc = newPc }
-    where
-      x = vars machine ! xVar
-      newPc = if x == value then pc machine + 2 else pc machine
+skipIfEqualTo xVar value machine = if (vars machine ! xVar) == value
+    then incrementPc machine 
+    else machine
 
 skipIfNotEqualTo :: Word8 -> Word8 -> Machine -> Machine
-skipIfNotEqualTo xVar value machine = machine { pc = newPc }
-    where
-      x = vars machine ! xVar
-      newPc = if x /= value then pc machine + 2 else pc machine
+skipIfNotEqualTo xVar value machine = if (vars machine ! xVar) /= value
+    then incrementPc machine
+    else machine
 
 skipIfEqualToVar :: Word8 -> Word8 -> Machine -> Machine
-skipIfEqualToVar xVar yVar machine = machine { pc = newPc }
+skipIfEqualToVar xVar yVar machine = if x == y 
+    then incrementPc machine
+    else machine
     where
       x = vars machine ! xVar
       y = vars machine ! yVar
-      newPc = if x == y then pc machine + 2 else pc machine
 
 setVar :: Word8 -> Word8 -> Machine -> Machine
 setVar x newVal machine = machine { vars = newVars }
@@ -329,27 +331,32 @@ blit
     -> Word8
     -> Word8
     -> UArray (Word8, Word8) Bool
-blit screen sprite x y = accum
-    (/=)
-    screen
-    [ ((ax + x, ay + y), s) | ((ax, ay), s) <- assocs sprite ]
+blit screen sprite x y = newScreen
+    where
+      spriteAssocs = filter
+        (\((x, y), _) -> x < displayWidth && y < displayHeight)
+        [ ((ax + x, ay + y), s) | ((ax, ay), s) <- assocs sprite ]
+      newScreen = accum (/=) screen spriteAssocs
   
 skipIfKeyDown :: Word8 -> Machine -> Machine
-skipIfKeyDown key machine = machine { pc = newPc }
+skipIfKeyDown keyVar machine = if keyState == KP.Down
+    then incrementPc machine
+    else machine
     where
-      isKeyDown = KP.keys (keypad machine) ! key == KP.Down
-      newPc = if isKeyDown then pc machine + 2 else pc machine
+      key = vars machine ! keyVar
+      keyState = KP.keys (keypad machine) ! key
 
 skipIfKeyUp :: Word8 -> Machine -> Machine
-skipIfKeyUp key machine = machine { pc = newPc }
+skipIfKeyUp keyVar machine = if keyState == KP.Up 
+    then incrementPc machine
+    else machine
     where
-      isKeyUp = KP.keys (keypad machine) ! key == KP.Up
-      newPc = if isKeyUp then pc machine + 2 else pc machine
+      key = vars machine ! keyVar
+      keyState = KP.keys (keypad machine) ! key
 
 readDelayTimer :: Word8 -> Machine -> Machine
 readDelayTimer xVar machine = machine { vars = newVars }
-    where
-      newVars = vars machine // [(xVar, delayTimer machine)]
+    where newVars = vars machine // [(xVar, delayTimer machine)]
 
 waitForKey :: Word8 -> Machine -> Machine
 waitForKey xVar machine = machine { runState = WaitForKeyUp xVar }
@@ -362,17 +369,17 @@ getKey xVar machine =
     where
       isKeyUpEvent = (KP.Up ==) . KP.state
       keysUp = filter isKeyUpEvent $ (KP.events . keypad) machine
-      newVars = vars machine // [(xVar, (KP.key . head) keysUp)]
+      newVars = case keysUp of
+        (k:ks) -> vars machine // [(xVar, (KP.key . head) keysUp)]
+        _ -> vars machine
 
 setDelayTimer :: Word8 -> Machine -> Machine
 setDelayTimer xVar machine = machine { delayTimer = newTimer }
-    where
-      newTimer = vars machine ! xVar
+    where newTimer = vars machine ! xVar
 
 setSoundTimer :: Word8 -> Machine -> Machine
 setSoundTimer xVar machine = machine { soundTimer = newTimer }
-    where
-      newTimer = vars machine ! xVar
+    where newTimer = vars machine ! xVar
 
 -- Sets VF based on overflow, in line with Amiga
 addToI :: Word8 -> Machine -> Machine
