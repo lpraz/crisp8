@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 69441c85093cf7bed8bb2f487a0db3f6bfeecdd4db90a610b16fd383662774be
+-- hash: f5f6e2fa7bc5143a4931c4309639e1ea56c811b1692fe8b04cdb3c7e8ff81f27
 
 name:           crisp8
 version:        0.1.0.0
@@ -66,15 +66,20 @@ test-suite crisp8-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Crisp8.Machine.KeypadSpec
+      Crisp8.MachineSpec
       Paths_crisp8
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      array
+      QuickCheck
+    , array
     , base >=4.7 && <5
     , bytestring
     , crisp8
+    , hspec
+    , hspec-discover
     , linear
     , random
     , sdl2

@@ -276,11 +276,12 @@ shiftVarLeft xVar yVar machine = machine { vars = newVars }
         ]
 
 skipIfNotEqualToVar :: Word8 -> Word8 -> Machine -> Machine
-skipIfNotEqualToVar xVar yVar machine = machine { pc = newPc }
+skipIfNotEqualToVar xVar yVar machine = if x /= y
+    then incrementPc machine
+    else machine
     where
       x = vars machine ! xVar
       y = vars machine ! yVar
-      newPc = if x /= y then pc machine + 2 else pc machine
 
 setI :: Word16 -> Machine -> Machine
 setI newI machine = machine { i = newI }
@@ -359,7 +360,7 @@ readDelayTimer xVar machine = machine { vars = newVars }
     where newVars = vars machine // [(xVar, delayTimer machine)]
 
 waitForKey :: Word8 -> Machine -> Machine
-waitForKey xVar machine = machine { runState = WaitForKeyUp xVar }
+waitForKey xVar machine = getKey xVar $ machine { runState = WaitForKeyUp xVar }
 
 getKey :: Word8 -> Machine -> Machine
 getKey xVar machine =
