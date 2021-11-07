@@ -57,10 +57,10 @@ makeMachine = do
       }
 
 makeRam :: UArray Word16 Word8
-makeRam = blankRam // assocs font
+makeRam = blankRam // fontAssocs
     where
       blankRam = array (0, 0xFFF) []
-      font = ixmap (0, 0xFFF) (+fontStartAddr) defaultFont
+      fontAssocs = (zip [fontStartAddr..] . concat) defaultFont
 
 makeScreen :: UArray (Word8, Word8) Bool
 makeScreen = array ((0, 0), (displayWidth - 1, displayHeight - 1)) []
