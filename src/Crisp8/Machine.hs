@@ -304,12 +304,14 @@ setVarToMaskedRandom xVar mask machine = machine
       newVars = vars machine // [(xVar, randomWord)]
 
 draw :: Word8 -> Word8 -> Word8 -> Machine -> Machine
-draw xVar yVar height machine = machine { screen = newScreen }
+draw xVar yVar height machine = machine { screen = newScreen, vars = newVars }
     where
       x = (vars machine ! xVar) `mod` displayWidth
       y = (vars machine ! yVar) `mod` displayHeight
       sprite = readSprite (ram machine) (i machine) height
       newScreen = blit (screen machine) sprite x y
+      vf = if anyPixelsOn (screen machine) sprite x y then 1 else 0
+      newVars = vars machine // [(0xF, vf)]
 
 readSprite 
     :: UArray Word16 Word8 
@@ -332,12 +334,34 @@ blit
     -> Word8
     -> Word8
     -> UArray (Word8, Word8) Bool
-blit screen sprite x y = newScreen
+blit screen sprite x y = accum (/=) screen (absSpriteAssocs sprite x y)
+
+anyPixelsOn
+    :: UArray (Word8, Word8) Bool 
+    -> UArray (Word8, Word8) Bool
+    -> Word8
+    -> Word8
+    -> Bool
+anyPixelsOn screen sprite x y =
+    any
+    (\((ax, ay), av) ->
+      av &&
+      any (\((bx, by), bv) -> bv && ax == bx && ay == by) spriteAssocs)
+    screenAssocs
     where
-      spriteAssocs = filter
-        (\((x, y), _) -> x < displayWidth && y < displayHeight)
-        [ ((ax + x, ay + y), s) | ((ax, ay), s) <- assocs sprite ]
-      newScreen = accum (/=) screen spriteAssocs
+      screenAssocs = assocs screen
+      spriteAssocs = absSpriteAssocs sprite x y
+
+-- TODO: make this more readable?
+absSpriteAssocs
+    :: UArray (Word8, Word8) Bool
+    -> Word8
+    -> Word8
+    -> [((Word8, Word8), Bool)]
+absSpriteAssocs sprite x y =
+    filter
+    (\((x, y), _) -> x < displayWidth && y < displayHeight)
+    [ ((ax + x, ay + y), s) | ((ax, ay), s) <- assocs sprite ]
   
 skipIfKeyDown :: Word8 -> Machine -> Machine
 skipIfKeyDown keyVar machine = if keyState == KP.Down
